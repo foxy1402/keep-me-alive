@@ -5,8 +5,29 @@ Features: Admin authentication, GitHub Gist storage, Playwright browser automati
 """
 import streamlit as st
 import os
+import subprocess
+import sys
 from datetime import datetime
 import time
+
+# Install Playwright browsers on startup (needed for Streamlit Cloud)
+@st.cache_resource
+def install_playwright_browsers():
+    """Install Playwright Chromium browser if not already installed."""
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "playwright", "install", "chromium"],
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        return result.returncode == 0
+    except Exception as e:
+        print(f"Playwright install error: {e}")
+        return False
+
+# Run installation
+install_playwright_browsers()
 
 from storage import (
     get_websites, add_website, remove_website, toggle_website,
