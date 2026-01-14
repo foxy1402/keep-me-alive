@@ -5,9 +5,9 @@ Works on Linux (Streamlit Cloud, Render.com).
 """
 import asyncio
 import time
+import base64
 from datetime import datetime
-from pathlib import Path
-from typing import Tuple
+from typing import Tuple, Optional
 
 # Try to import playwright, handle if not installed
 try:
@@ -18,11 +18,8 @@ except ImportError:
 
 from storage import add_visit_record, get_settings
 
-# Screenshots directory
-SCREENSHOTS_DIR = Path(__file__).parent / "data" / "screenshots"
 
-
-async def visit_website(url: str, take_screenshot: bool = False) -> Tuple[bool, float, str, str]:
+async def visit_website(url: str, take_screenshot: bool = False) -> Tuple[bool, float, str, Optional[bytes]]:
     """
     Visit a website using Playwright browser.
     
@@ -31,13 +28,13 @@ async def visit_website(url: str, take_screenshot: bool = False) -> Tuple[bool, 
         take_screenshot: Whether to capture a screenshot
     
     Returns:
-        Tuple of (success, response_time_ms, error_message, screenshot_path)
+        Tuple of (success, response_time_ms, error_message, screenshot_bytes)
     """
     if not PLAYWRIGHT_AVAILABLE:
-        return False, 0, "Playwright not installed. Run: playwright install chromium", ""
+        return False, 0, "Playwright not installed", None
     
     start_time = time.time()
-    screenshot_path = ""
+    screenshot_bytes = None
     
     try:
         async with async_playwright() as p:
@@ -49,8 +46,8 @@ async def visit_website(url: str, take_screenshot: bool = False) -> Tuple[bool, 
             
             # Create a new context with realistic viewport
             context = await browser.new_context(
-                viewport={'width': 1920, 'height': 1080},
-                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                viewport={'width': 1280, 'height': 720},
+                user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36'
             )
             
             page = await context.new_page()
@@ -59,39 +56,35 @@ async def visit_website(url: str, take_screenshot: bool = False) -> Tuple[bool, 
             await page.goto(url, wait_until='domcontentloaded', timeout=30000)
             
             # Wait a bit to simulate real browsing
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)
             
-            response_time = (time.time() - start_time) * 1000  # Convert to ms
+            response_time = (time.time() - start_time) * 1000
             
-            # Take screenshot if enabled
+            # Take screenshot as bytes (not file)
             if take_screenshot:
-                SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                safe_url = url.replace("https://", "").replace("http://", "").replace("/", "_")[:50]
-                screenshot_path = str(SCREENSHOTS_DIR / f"{safe_url}_{timestamp}.png")
-                await page.screenshot(path=screenshot_path)
+                screenshot_bytes = await page.screenshot(type='png')
             
             await browser.close()
             
-            # Record successful visit
-            add_visit_record(url, True, response_time, "", screenshot_path)
+            # Record successful visit (without screenshot path since we use bytes now)
+            add_visit_record(url, True, response_time, "", "")
             
-            return True, response_time, "", screenshot_path
+            return True, response_time, "", screenshot_bytes
             
     except PlaywrightTimeout:
         response_time = (time.time() - start_time) * 1000
         error_msg = "Timeout: Page took too long to load"
         add_visit_record(url, False, response_time, error_msg)
-        return False, response_time, error_msg, ""
+        return False, response_time, error_msg, None
         
     except Exception as e:
         response_time = (time.time() - start_time) * 1000
-        error_msg = str(e)
+        error_msg = str(e)[:200]  # Limit error message length
         add_visit_record(url, False, response_time, error_msg)
-        return False, response_time, error_msg, ""
+        return False, response_time, error_msg, None
 
 
-def visit_website_sync(url: str, take_screenshot: bool = False) -> Tuple[bool, float, str, str]:
+def visit_website_sync(url: str, take_screenshot: bool = False) -> Tuple[bool, float, str, Optional[bytes]]:
     """Synchronous wrapper for visit_website."""
     return asyncio.run(visit_website(url, take_screenshot))
 
@@ -114,7 +107,7 @@ async def visit_all_websites(websites: list) -> list:
                 "success": success,
                 "response_time_ms": response_time,
                 "error": error,
-                "screenshot": screenshot
+                "screenshot": screenshot  # bytes or None
             })
     
     return results

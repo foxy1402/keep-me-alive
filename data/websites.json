@@ -16,6 +16,38 @@
   "visit_history": [
     {
       "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T13:33:32.266210",
+      "success": false,
+      "response_time_ms": 0.87,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T13:19:32.236337",
+      "success": false,
+      "response_time_ms": 0.7,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T13:09:32.211530",
+      "success": false,
+      "response_time_ms": 0.7,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T12:59:32.186128",
+      "success": false,
+      "response_time_ms": 0.71,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
       "timestamp": "2026-01-14T12:45:32.157247",
       "success": false,
       "response_time_ms": 0.74,

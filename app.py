@@ -274,13 +274,21 @@ def main_app():
             col1, col2 = st.columns([3, 1])
             with col2:
                 if st.button("🚀 Visit All", type="secondary", use_container_width=True):
-                    with st.spinner("Visiting..."):
+                    with st.spinner("Visiting all websites..."):
                         enabled = [w for w in websites if w.get("enabled", True)]
                         if enabled:
                             results = visit_all_websites_sync(enabled)
                             ok = sum(1 for r in results if r["success"])
-                            st.success(f"{ok}/{len(results)} OK")
-                    st.rerun()
+                            st.success(f"✅ {ok}/{len(results)} completed")
+                            
+                            # Show results with screenshots
+                            for r in results:
+                                status = "✅" if r["success"] else "❌"
+                                st.write(f"{status} **{r['name']}** - {r['response_time_ms']:.0f}ms")
+                                if r.get("screenshot"):
+                                    st.image(r["screenshot"], caption=r["name"], use_container_width=True)
+                                if r.get("error"):
+                                    st.error(r["error"])
             
             for site in websites:
                 col1, col2, col3, col4 = st.columns([0.5, 4, 1, 1])
@@ -302,12 +310,15 @@ def main_app():
                 
                 with col3:
                     if st.button("👁️", key=f"v_{site['id']}", use_container_width=True):
-                        with st.spinner("..."):
-                            ok, ms, err, _ = visit_website_sync(site['url'], get_settings().get("screenshots_enabled", False))
+                        with st.spinner("Visiting..."):
+                            take_ss = get_settings().get("screenshots_enabled", False)
+                            ok, ms, err, screenshot = visit_website_sync(site['url'], take_ss)
                             if ok:
                                 st.success(f"✅ {ms:.0f}ms")
+                                if screenshot:
+                                    st.image(screenshot, caption=f"Screenshot: {site['name']}", use_container_width=True)
                             else:
-                                st.error(f"❌")
+                                st.error(f"❌ {err[:50]}" if err else "❌ Failed")
                 
                 with col4:
                     if st.button("🗑️", key=f"d_{site['id']}", use_container_width=True):
