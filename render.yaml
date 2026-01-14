@@ -1,0 +1,14 @@
+# Render.com deployment configuration
+# https://render.com/docs/yaml-spec
+
+services:
+  - type: web
+    name: keep-me-alive
+    runtime: docker
+    plan: free
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: STREAMLIT_SERVER_PORT
+        value: 8501
+      - key: STREAMLIT_SERVER_ADDRESS
+        value: 0.0.0.0

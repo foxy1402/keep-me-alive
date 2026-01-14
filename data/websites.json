@@ -1,0 +1,82 @@
+{
+  "websites": [
+    {
+      "id": "20260114115214938326",
+      "url": "https://httpbin.org/get",
+      "name": "Test Site",
+      "enabled": true,
+      "added_at": "2026-01-14T11:52:14.938346"
+    }
+  ],
+  "settings": {
+    "interval_min": 10,
+    "interval_max": 14,
+    "screenshots_enabled": true
+  },
+  "visit_history": [
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T12:45:32.157247",
+      "success": false,
+      "response_time_ms": 0.74,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T12:35:32.135632",
+      "success": false,
+      "response_time_ms": 0.7,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T12:23:32.119739",
+      "success": false,
+      "response_time_ms": 0.76,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T12:09:42.963935",
+      "success": false,
+      "response_time_ms": 0.75,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T12:02:26.058272",
+      "success": false,
+      "response_time_ms": 1.07,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T11:58:13.488883",
+      "success": false,
+      "response_time_ms": 0.64,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T11:53:23.472072",
+      "success": false,
+      "response_time_ms": 1.16,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T11:52:23.506240",
+      "success": false,
+      "response_time_ms": 36.83,
+      "error_message": "",
+      "screenshot_path": ""
+    }
+  ]
+}
