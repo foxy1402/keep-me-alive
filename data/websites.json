@@ -16,6 +16,14 @@
   "visit_history": [
     {
       "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T13:54:32.315842",
+      "success": false,
+      "response_time_ms": 0.76,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
       "timestamp": "2026-01-14T13:44:32.293460",
       "success": false,
       "response_time_ms": 0.75,

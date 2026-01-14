@@ -1,10 +1,11 @@
 """
 Storage module for Keep Me Alive service.
 Uses GitHub Gist for persistence (cloud) with local fallback.
+Auto-cleans history older than 3 days.
 """
 import json
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 import threading
@@ -170,9 +171,32 @@ def update_settings(interval_min: int = None, interval_max: int = None,
 
 
 # Visit history functions
+HISTORY_MAX_AGE_DAYS = 3  # Auto-cleanup entries older than this
+
+
+def _cleanup_old_history(history: list) -> list:
+    """Remove history entries older than HISTORY_MAX_AGE_DAYS."""
+    if not history:
+        return []
+    
+    cutoff = datetime.now() - timedelta(days=HISTORY_MAX_AGE_DAYS)
+    cleaned = []
+    
+    for record in history:
+        try:
+            timestamp = datetime.fromisoformat(record.get("timestamp", ""))
+            if timestamp > cutoff:
+                cleaned.append(record)
+        except (ValueError, TypeError):
+            # Keep records with invalid timestamps (shouldn't happen)
+            cleaned.append(record)
+    
+    return cleaned
+
+
 def add_visit_record(url: str, success: bool, response_time: float = 0, 
                      error_message: str = "", screenshot_path: str = ""):
-    """Add a visit record to history."""
+    """Add a visit record to history and auto-cleanup old entries."""
     data = _load_data()
     
     record = {
@@ -180,14 +204,18 @@ def add_visit_record(url: str, success: bool, response_time: float = 0,
         "timestamp": datetime.now().isoformat(),
         "success": success,
         "response_time_ms": round(response_time, 2),
-        "error_message": error_message,
-        "screenshot_path": screenshot_path
+        "error_message": error_message
     }
     
-    # Keep only last 50 records to save Gist space
+    # Get history and cleanup old entries
     history = data.get("visit_history", [])
+    history = _cleanup_old_history(history)
+    
+    # Add new record at beginning
     history.insert(0, record)
-    data["visit_history"] = history[:50]
+    
+    # Also limit to max 100 entries as safety
+    data["visit_history"] = history[:100]
     
     _save_data(data)
 
@@ -204,3 +232,4 @@ def clear_visit_history():
     data = _load_data()
     data["visit_history"] = []
     _save_data(data)
+
