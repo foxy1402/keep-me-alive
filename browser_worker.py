@@ -53,10 +53,12 @@ async def visit_website(url: str, take_screenshot: bool = False) -> Tuple[bool, 
             page = await context.new_page()
             
             # Navigate to URL with timeout
-            await page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            await page.goto(url, wait_until='networkidle', timeout=60000)
             
-            # Wait a bit to simulate real browsing
-            await asyncio.sleep(1)
+            # Wait 20-30 seconds for content to fully load (especially for SPAs)
+            import random
+            wait_time = random.randint(20, 30)
+            await asyncio.sleep(wait_time)
             
             response_time = (time.time() - start_time) * 1000
             

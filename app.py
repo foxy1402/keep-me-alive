@@ -123,14 +123,17 @@ def login_page():
     with col2:
         st.markdown("### 🔐 Admin Login")
         
-        password = st.text_input("Password", type="password", key="login_password")
-        
-        if st.button("Login", type="primary", use_container_width=True):
-            if password == ADMIN_PASSWORD:
-                st.session_state.authenticated = True
-                st.rerun()
-            else:
-                st.error("Invalid password")
+        # Use form for Enter key support
+        with st.form("login_form"):
+            password = st.text_input("Password", type="password", key="login_password")
+            submitted = st.form_submit_button("Login", type="primary", use_container_width=True)
+            
+            if submitted:
+                if password == ADMIN_PASSWORD:
+                    st.session_state.authenticated = True
+                    st.rerun()
+                else:
+                    st.error("Invalid password")
         
         if not ADMIN_PASSWORD:
             st.warning("⚠️ No ADMIN_PASSWORD set in environment. Access is open.")
