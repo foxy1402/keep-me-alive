@@ -17,6 +17,7 @@ A web service that keeps your free-tier hosted apps alive by visiting them with 
 | `ADMIN_PASSWORD` | ✅ | Password to access admin panel |
 | `GIST_TOKEN` | ✅ | GitHub Personal Access Token (gist scope) |
 | `GIST_ID` | ✅ | ID of the Gist for data storage |
+| `PORT` | ⬜ | Port the app binds to (default `8501`). Most PaaS platforms inject this automatically. |
 
 ## Setup Guide
 
@@ -24,7 +25,7 @@ A web service that keeps your free-tier hosted apps alive by visiting them with 
 
 1. Go to https://gist.github.com
 2. **Description**: `keep-me-alive`
-3. **Filename**: `sites-settings.json`
+3. **Filename**: `keepmealive_data.json`
 4. **Content** - paste this:
 ```json
 {
@@ -69,6 +70,28 @@ GIST_ID = "your-gist-id"
 2. Create Web Service → Docker runtime
 3. Add environment variables in Settings
 4. Deploy
+
+#### Prebuilt image (GHCR) — Portainer / any PaaS
+
+A multi-arch image (`linux/amd64` + `linux/arm64`) is published to GHCR on every push to `main`:
+
+```
+ghcr.io/foxy1402/keep-me-alive:latest
+```
+
+Run it anywhere Docker/OCI images are supported:
+
+```bash
+docker run -d \
+  -p 8501:8501 \
+  -e ADMIN_PASSWORD="your-password" \
+  -e GIST_TOKEN="ghp_xxxx" \
+  -e GIST_ID="your-gist-id" \
+  ghcr.io/foxy1402/keep-me-alive:latest
+```
+
+- **PaaS (Railway, Fly.io, Render, etc.):** the platform injects its own `PORT`; the container binds to it automatically. Just set the three env vars above.
+- **Portainer:** create a container/stack from the image above, map the published port to `8501` (or set `PORT` to match your mapping), and add the env vars.
 
 ## Local Development
 

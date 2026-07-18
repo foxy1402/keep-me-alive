@@ -3,6 +3,7 @@ FROM python:3.11-slim
 
 # Install system dependencies for Playwright
 RUN apt-get update && apt-get install -y \
+    curl \
     libnss3 \
     libnspr4 \
     libatk1.0-0 \
@@ -41,15 +42,16 @@ COPY . .
 # Create data directory
 RUN mkdir -p data
 
-# Expose Streamlit port
+# Expose the default port (informational; overridden by $PORT at runtime)
 EXPOSE 8501
 
-# Set environment variables
-ENV STREAMLIT_SERVER_PORT=8501
+# PORT defaults to 8501 but PaaS platforms (Render, Railway, Fly.io, etc.)
+# inject their own PORT at runtime, which this container binds to.
+ENV PORT=8501
 ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0
 
-# Health check
-HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health || exit 1
+# Health check (shell form so ${PORT} is expanded)
+HEALTHCHECK CMD curl --fail "http://localhost:${PORT:-8501}/_stcore/health" || exit 1
 
-# Run the application
-CMD ["streamlit", "run", "app.py", "--server.port=8501", "--server.address=0.0.0.0"]
+# Run the application (shell form so ${PORT} is expanded from the environment)
+CMD streamlit run app.py --server.port=${PORT:-8501} --server.address=0.0.0.0

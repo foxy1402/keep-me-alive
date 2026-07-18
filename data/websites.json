@@ -16,6 +16,110 @@
   "visit_history": [
     {
       "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T16:30:32.636323",
+      "success": false,
+      "response_time_ms": 0.7,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T16:16:32.610500",
+      "success": false,
+      "response_time_ms": 0.72,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T16:03:32.586117",
+      "success": false,
+      "response_time_ms": 0.71,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T15:52:32.565990",
+      "success": false,
+      "response_time_ms": 0.73,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T15:42:32.542048",
+      "success": false,
+      "response_time_ms": 0.71,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T15:30:32.515781",
+      "success": false,
+      "response_time_ms": 0.79,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T15:16:32.492559",
+      "success": false,
+      "response_time_ms": 1.43,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T15:04:32.470923",
+      "success": false,
+      "response_time_ms": 0.75,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T14:50:32.449140",
+      "success": false,
+      "response_time_ms": 0.8,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T14:40:32.426595",
+      "success": false,
+      "response_time_ms": 0.77,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T14:29:32.396498",
+      "success": false,
+      "response_time_ms": 0.73,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T14:18:32.369626",
+      "success": false,
+      "response_time_ms": 0.73,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
+      "timestamp": "2026-01-14T14:04:32.345568",
+      "success": false,
+      "response_time_ms": 0.75,
+      "error_message": "",
+      "screenshot_path": ""
+    },
+    {
+      "url": "https://httpbin.org/get",
       "timestamp": "2026-01-14T13:54:32.315842",
       "success": false,
       "response_time_ms": 0.76,

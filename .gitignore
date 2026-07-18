@@ -17,6 +17,9 @@ env/
 # Screenshots (optional, can be large)
 data/screenshots/
 
+# Runtime state (persisted via Gist; local file is ephemeral)
+data/websites.json
+
 # Local testing
 *.log
 .env

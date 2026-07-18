@@ -7,8 +7,8 @@ services:
     runtime: docker
     plan: free
     healthCheckPath: /_stcore/health
+    # Render automatically injects PORT; the container binds to it.
+    # Set ADMIN_PASSWORD, GIST_TOKEN, and GIST_ID as secret env vars in the dashboard.
     envVars:
-      - key: STREAMLIT_SERVER_PORT
-        value: 8501
       - key: STREAMLIT_SERVER_ADDRESS
         value: 0.0.0.0
