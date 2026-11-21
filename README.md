@@ -17,7 +17,8 @@ Playwright driving Chromium.
 - 📸 **Screenshots** — optional, served as PNGs and pruned automatically
 - 🔐 **Password login** — signed cookie session, no user database; failed attempts are throttled per
   client
-- 💾 **Storage** — GitHub Gist (optional) with a local file fallback
+- 💾 **Two-tier storage** — sites and settings sync through GitHub Gist (optional); visit history
+  stays local and is pruned to 3 days / 100 entries, so logging never spams Gist revisions
 
 ## Environment variables
 
@@ -118,7 +119,13 @@ the platform hostname (`yourapp.onrender.com`) instead of a custom domain behind
 
 ## Setup guide (Gist storage)
 
-Optional — without it, state is kept in `data/`.
+Optional — without it, sites and settings are kept in `data/`.
+
+The Gist holds **sites and settings only**. Visit history is a local log: it changes every few
+minutes, so syncing it would create one Gist revision per visit. It lives in `data/websites.json` and
+is pruned to the last 3 days (max 100 entries). Older Gists that still contain a `visit_history` are
+migrated automatically on first load — the stored history is cleared once and history stays local
+from then on.
 
 ### 1. Create a GitHub Gist
 

@@ -1,8 +1,10 @@
 """
 Storage module for Keep Me Alive service.
 
-Uses GitHub Gist for persistence (cloud) with local fallback.
-Auto-cleans history older than 3 days.
+Sites and settings are synced through the Gist; visit history is deliberately
+local-only. History changes on every visit, and syncing it would create one
+Gist revision per visit (thousands of revisions per month). It is pruned to the
+last HISTORY_MAX_AGE_DAYS days / HISTORY_MAX_ENTRIES entries instead.
 
 Two invariants matter here:
 
@@ -32,6 +34,10 @@ logger = logging.getLogger(__name__)
 # Local fallback path
 DATA_DIR = Path(__file__).parent / "data"
 DATA_FILE = DATA_DIR / "websites.json"
+
+# Visit history is local-only, and bounded: max age and max entries.
+HISTORY_MAX_AGE_DAYS = 3
+HISTORY_MAX_ENTRIES = 100
 
 # Re-entrant so _mutate() can hold it across load and save.
 _data_lock = threading.RLock()
@@ -96,6 +102,22 @@ def _load_data() -> dict:
             data = load_from_gist()
             if data:
                 _gist_readable = True
+                # Migrate older Gists that still carry a visit history: logs are
+                # local now, and leaving the old log in the file only bloats it.
+                if data.get("visit_history"):
+                    logger.info(
+                        "Removing visit history from Gist (%d entries); logs are local-only",
+                        len(data["visit_history"]),
+                    )
+                    data["visit_history"] = []
+                    if not save_to_gist(data):
+                        logger.warning("Could not update Gist during history migration")
+                # The local file is authoritative for history, which the Gist no
+                # longer stores. Gist wins for sites and settings.
+                local = _read_local() or {}
+                data["visit_history"] = _cleanup_old_history(
+                    local.get("visit_history", [])
+                )[:HISTORY_MAX_ENTRIES]
                 _cache = data
                 _cache_loaded = True
                 return copy.deepcopy(data)
@@ -114,16 +136,20 @@ def _load_data() -> dict:
         return copy.deepcopy(data)
 
 
-def _save_data(data: dict):
-    """Save data to the local file, and to the Gist when it is trustworthy."""
+def _save_data(data: dict, sync_gist: bool = True):
+    """Save data locally, and to the Gist when the change belongs there."""
     global _cache
 
     with _data_lock:
         _cache = copy.deepcopy(data)
 
-        if is_gist_configured():
+        if sync_gist and is_gist_configured():
             if _gist_readable:
-                if not save_to_gist(data):
+                # Sites and settings are synced; visit history never leaves this
+                # machine (one Gist revision per visit otherwise).
+                gist_doc = {k: v for k, v in data.items() if k != "visit_history"}
+                gist_doc["visit_history"] = []
+                if not save_to_gist(gist_doc):
                     logger.warning("Could not save to Gist; local copy is up to date")
             else:
                 logger.warning("Skipping Gist write: last Gist read failed")
@@ -135,12 +161,12 @@ def _save_data(data: dict):
             logger.error("Error saving local file: %s", e)
 
 
-def _mutate(fn: Callable[[dict], object]):
+def _mutate(fn: Callable[[dict], object], sync_gist: bool = True):
     """Apply fn to the current document and save it, holding the lock throughout."""
     with _data_lock:
         data = _load_data()
         result = fn(data)
-        _save_data(data)
+        _save_data(data, sync_gist=sync_gist)
         return result
 
 
@@ -241,7 +267,6 @@ def update_settings(interval_min: int = None, interval_max: int = None,
 
 
 # Visit history functions
-HISTORY_MAX_AGE_DAYS = 3  # Auto-cleanup entries older than this
 
 
 def _cleanup_old_history(history: list) -> list:
@@ -268,7 +293,11 @@ def add_visit_record(url: str, success: bool, response_time: float = 0,
                      error_message: str = "", screenshot_path: str = "",
                      status_code: Optional[int] = None, final_url: str = "",
                      title: str = "", blocked: bool = False):
-    """Add a visit record to history and auto-cleanup old entries."""
+    """Add a visit record to local history and auto-cleanup old entries.
+
+    Deliberately does not sync to the Gist: this runs on every visit and would
+    otherwise create a Gist revision per visit.
+    """
     def apply(data: dict):
         record = {
             "url": url,
@@ -285,9 +314,9 @@ def add_visit_record(url: str, success: bool, response_time: float = 0,
 
         history = _cleanup_old_history(data.get("visit_history", []))
         history.insert(0, record)
-        data["visit_history"] = history[:100]
+        data["visit_history"] = history[:HISTORY_MAX_ENTRIES]
 
-    _mutate(apply)
+    _mutate(apply, sync_gist=False)
 
 
 def get_visit_history(limit: int = 50) -> list:
@@ -298,5 +327,5 @@ def get_visit_history(limit: int = 50) -> list:
 
 
 def clear_visit_history():
-    """Clear all visit history."""
-    _mutate(lambda data: data.__setitem__("visit_history", []))
+    """Clear all visit history (local only)."""
+    _mutate(lambda data: data.__setitem__("visit_history", []), sync_gist=False)
