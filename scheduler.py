@@ -18,7 +18,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from storage import get_settings, get_websites
-from browser_worker import visit_all_websites_sync
+from browser_worker import VISIT_LOCK, visit_all_websites_sync
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -79,7 +79,18 @@ def _run_visits():
         if _is_running:
             logger.info("A visit run is already in progress; skipping this trigger")
             return
-        _is_running = True
+        # Shared with the web UI: a manual visit owns the browser while it runs.
+        # Skip rather than queue, so a batch never piles up behind a manual run.
+        if not VISIT_LOCK.acquire(blocking=False):
+            logger.info("A manual visit is in progress; skipping this trigger")
+            manual_visit_running = True
+        else:
+            manual_visit_running = False
+            _is_running = True
+
+    if manual_visit_running:
+        _reschedule_with_random_interval()
+        return
 
     started = datetime.now()
     _last_run_time = started
@@ -107,6 +118,7 @@ def _run_visits():
     finally:
         with _scheduler_lock:
             _is_running = False
+        VISIT_LOCK.release()
         _reschedule_with_random_interval()
 
 

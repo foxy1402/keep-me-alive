@@ -43,7 +43,7 @@ from scheduler import (
     start_scheduler, stop_scheduler, get_scheduler_status, get_last_run, record_run,
 )
 from browser_worker import (
-    visit_website_sync, visit_all_websites_sync, available_engines,
+    VISIT_LOCK, visit_website_sync, visit_all_websites_sync, available_engines,
 )
 from gist_storage import is_gist_configured
 
@@ -65,10 +65,6 @@ _SESSION_SECRET = os.environ.get("SESSION_SECRET") or hashlib.sha256(
 ).hexdigest()
 
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
-
-# One browser run at a time: a visit spawns a full Chromium, and stacking them
-# exhausts the server's thread pool and memory.
-_visit_lock = threading.Lock()
 
 # Failed-login tracking, per client address.
 LOGIN_WINDOW = 600
@@ -235,14 +231,15 @@ def _run_guarded(fn):
     """
     Run one browser job, refusing to stack a second one.
 
-    Returns None when another run already holds the slot.
+    The lock is shared with the scheduler, so a manual visit cannot overlap a
+    scheduled batch. Returns None when another run already holds the slot.
     """
-    if not _visit_lock.acquire(blocking=False):
+    if not VISIT_LOCK.acquire(blocking=False):
         return None
     try:
         return fn()
     finally:
-        _visit_lock.release()
+        VISIT_LOCK.release()
 
 
 # ------------------------------------------------------------- rendering ----
@@ -305,7 +302,7 @@ def _dashboard(request: Request, msg: str = "") -> HTMLResponse:
             "checks": checks,
             "next_run": _next_run_text(status),
             "running": bool(status.get("running")),
-            "visiting": bool(status.get("is_visiting")) or _visit_lock.locked(),
+            "visiting": bool(status.get("is_visiting")) or VISIT_LOCK.locked(),
             "history": history,
             "settings": settings,
             "engines": engines,

@@ -47,6 +47,11 @@ logger = logging.getLogger(__name__)
 
 PROFILE_ROOT = Path(__file__).parent / "data" / "browser_profiles"
 
+# One browser job at a time, shared by the scheduler and the web UI. Each site
+# visit launches its own Chromium process, so a manual visit must not stack on
+# top of a scheduled batch (or the other way around).
+VISIT_LOCK = threading.Lock()
+
 DEFAULT_ENGINE = "chromium"
 SUPPORTED_ENGINES = ("chromium", "firefox")
 LOCALE = "en-US"
