@@ -1,4 +1,4 @@
-# Render.com deployment configuration
+# Render.com deployment configuration (optional; Portainer uses the image directly)
 # https://render.com/docs/yaml-spec
 
 services:
@@ -6,9 +6,6 @@ services:
     name: keep-me-alive
     runtime: docker
     plan: free
-    healthCheckPath: /_stcore/health
-    # Render automatically injects PORT; the container binds to it.
-    # Set ADMIN_PASSWORD, GIST_TOKEN, and GIST_ID as secret env vars in the dashboard.
-    envVars:
-      - key: STREAMLIT_SERVER_ADDRESS
-        value: 0.0.0.0
+    healthCheckPath: /healthz
+    # Render injects PORT; the container binds to it.
+    # Set ADMIN_PASSWORD, GIST_TOKEN and GIST_ID as secret env vars in the dashboard.

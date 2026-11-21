@@ -3,6 +3,7 @@ name: Build and publish image to GHCR
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 env:
@@ -10,7 +11,57 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-push:
+  # Build the image and actually start it. Two regressions so far (missing
+  # libatomic1 for the Playwright CLI, missing python-multipart) only showed up
+  # at runtime, so a build that is never launched is not evidence.
+  smoke:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build image (amd64, loaded locally)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: keepmealive:smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Start container and wait for /healthz
+        run: |
+          docker run -d --name smoke -p 8080:8080 -e ADMIN_PASSWORD=smoke keepmealive:smoke
+          for i in $(seq 1 45); do
+            if curl -fsS http://127.0.0.1:8080/healthz >/dev/null 2>&1; then
+              echo "healthy after ${i} attempts"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::container never became healthy"
+          docker logs smoke
+          exit 1
+
+      - name: Verify Chromium actually launches (as the runtime user)
+        run: |
+          docker exec -u 10001 smoke python -c "from playwright.sync_api import sync_playwright; p=sync_playwright().start(); b=p.chromium.launch(headless=True, channel='chromium', args=['--no-sandbox']); pg=b.new_page(); pg.goto('data:text/html,<h1>ok</h1>'); print('browser-ok', len(pg.evaluate('navigator.userAgent')) > 0); b.close(); p.stop()"
+
+      - name: Verify the login page renders
+        run: curl -fsS http://127.0.0.1:8080/login | grep -q "Admin login"
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker logs smoke || true
+
+  publish:
+    needs: smoke
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -33,7 +84,9 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=latest
+            # "latest" only from main, so a manual dispatch from a branch cannot
+            # move the tag users pull.
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=sha,format=short
 
       - uses: docker/build-push-action@v6

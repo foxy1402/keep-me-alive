@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Sign in · Keep Me Alive{% endblock %}
+{% block content %}
+<header class="top">
+  <div>
+    <h1 class="brand">Keep Me Alive</h1>
+    <p class="sub">Keep free-tier apps awake with periodic real-browser visits</p>
+  </div>
+</header>
+
+<div class="card" style="max-width:420px;margin:40px auto">
+  <h2>Admin login</h2>
+  {% if error %}<div class="flash" style="background:rgba(248,113,113,.1);border-color:rgba(248,113,113,.35);color:#fca5a5">{{ error }}</div>{% endif %}
+  {% if not has_password %}
+  <p class="hint">No <code>ADMIN_PASSWORD</code> is set, so access is open.</p>
+  <a class="btn" href="/">Continue</a>
+  {% else %}
+  <form method="post" action="/login">
+    <div class="field">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autofocus required>
+    </div>
+    <button class="primary" type="submit">Log in</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

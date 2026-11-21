@@ -1,25 +1,44 @@
 """
 Storage module for Keep Me Alive service.
+
 Uses GitHub Gist for persistence (cloud) with local fallback.
 Auto-cleans history older than 3 days.
+
+Two invariants matter here:
+
+* Every mutation is a read-modify-write of one document, so mutations run under
+  a single re-entrant lock. Otherwise a settings save can drop a visit record
+  written between another thread's load and save, or resurrect a deleted site.
+* A document that could not be loaded is never written back. If the Gist is
+  unreachable the app runs from the local file and only resumes syncing once a
+  Gist read has succeeded again, so a GitHub outage cannot overwrite real data
+  with defaults.
 """
+import copy
 import json
+import logging
 import os
+import threading
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
-import threading
+from typing import Callable, Optional
 
 from gist_storage import (
     is_gist_configured, load_from_gist, save_to_gist, DEFAULT_DATA
 )
 
+logger = logging.getLogger(__name__)
+
 # Local fallback path
 DATA_DIR = Path(__file__).parent / "data"
 DATA_FILE = DATA_DIR / "websites.json"
 
-# Thread lock for operations
-_data_lock = threading.Lock()
+# Re-entrant so _mutate() can hold it across load and save.
+_data_lock = threading.RLock()
+
+# Whether the last Gist read succeeded. While it is False we refuse to write to
+# the Gist, because we do not have a trustworthy picture of its contents.
+_gist_readable = False
 
 # In-memory cache
 _cache: Optional[dict] = None
@@ -28,69 +47,110 @@ _cache_loaded = False
 
 def _ensure_local_file():
     """Ensure local data directory and file exist."""
-    DATA_DIR.mkdir(exist_ok=True)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
     if not DATA_FILE.exists():
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump(DEFAULT_DATA, f, indent=2)
 
 
+def _atomic_write(path: Path, text: str):
+    """Write via a temp file + rename so a kill mid-write cannot truncate data."""
+    tmp = path.with_name(path.name + ".tmp")
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def _read_local() -> Optional[dict]:
+    """Read the local file. Returns None if it is missing or unreadable."""
+    _ensure_local_file()
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except json.JSONDecodeError as e:
+        # Keep the damaged file for inspection instead of silently replacing it.
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        broken = DATA_FILE.with_name(f"websites.json.corrupt-{stamp}")
+        try:
+            os.replace(DATA_FILE, broken)
+            logger.error("Local data file was corrupt (%s); moved to %s", e, broken.name)
+        except OSError:
+            logger.error("Local data file was corrupt (%s) and could not be moved", e)
+        return None
+    except OSError as e:
+        logger.error("Could not read local data file: %s", e)
+        return None
+
+
 def _load_data() -> dict:
     """Load data from Gist (primary) or local file (fallback)."""
-    global _cache, _cache_loaded
-    
+    global _cache, _cache_loaded, _gist_readable
+
     with _data_lock:
-        # Return cache if already loaded
         if _cache_loaded and _cache is not None:
-            return _cache.copy()
-        
-        # Try Gist first
+            return copy.deepcopy(_cache)
+
         if is_gist_configured():
             data = load_from_gist()
             if data:
+                _gist_readable = True
                 _cache = data
                 _cache_loaded = True
-                return data.copy()
-        
-        # Fallback to local file
-        _ensure_local_file()
-        try:
-            with open(DATA_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                _cache = data
-                _cache_loaded = True
-                return data.copy()
-        except Exception:
-            _cache = DEFAULT_DATA.copy()
-            _cache_loaded = True
-            return DEFAULT_DATA.copy()
+                return copy.deepcopy(data)
+            # Gist unreachable: fall back to the local copy and remember that we
+            # must not write to the Gist until a read succeeds.
+            _gist_readable = False
+            logger.warning("Gist unreachable; using local data and pausing Gist writes")
+        else:
+            _gist_readable = False
+
+        data = _read_local()
+        if data is None:
+            data = copy.deepcopy(DEFAULT_DATA)
+        _cache = data
+        _cache_loaded = True
+        return copy.deepcopy(data)
 
 
 def _save_data(data: dict):
-    """Save data to Gist (primary) and local file (backup)."""
+    """Save data to the local file, and to the Gist when it is trustworthy."""
     global _cache
-    
+
     with _data_lock:
-        _cache = data.copy()
-        
-        # Save to Gist if configured
+        _cache = copy.deepcopy(data)
+
         if is_gist_configured():
-            save_to_gist(data)
-        
-        # Always save local backup
-        _ensure_local_file()
+            if _gist_readable:
+                if not save_to_gist(data):
+                    logger.warning("Could not save to Gist; local copy is up to date")
+            else:
+                logger.warning("Skipping Gist write: last Gist read failed")
+
         try:
-            with open(DATA_FILE, "w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, default=str)
+            _ensure_local_file()
+            _atomic_write(DATA_FILE, json.dumps(data, indent=2, default=str))
         except Exception as e:
-            print(f"Error saving local file: {e}")
+            logger.error("Error saving local file: %s", e)
+
+
+def _mutate(fn: Callable[[dict], object]):
+    """Apply fn to the current document and save it, holding the lock throughout."""
+    with _data_lock:
+        data = _load_data()
+        result = fn(data)
+        _save_data(data)
+        return result
 
 
 def refresh_cache():
     """Force reload data from Gist."""
-    global _cache, _cache_loaded
+    global _cache, _cache_loaded, _gist_readable
     with _data_lock:
         _cache = None
         _cache_loaded = False
+        _gist_readable = False
     _load_data()
 
 
@@ -103,71 +163,81 @@ def get_websites() -> list:
 
 def add_website(url: str, name: str = "") -> bool:
     """Add a website to the list. Returns True if added, False if already exists."""
-    data = _load_data()
-    
-    # Check if URL already exists
-    for site in data["websites"]:
-        if site["url"].lower() == url.lower():
-            return False
-    
-    # Add new website
-    website = {
-        "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
-        "url": url,
-        "name": name or url,
-        "enabled": True,
-        "added_at": datetime.now().isoformat()
-    }
-    data["websites"].append(website)
-    _save_data(data)
-    return True
+
+    def apply(data: dict) -> bool:
+        for site in data["websites"]:
+            if site["url"].lower() == url.lower():
+                return False
+        data["websites"].append({
+            "id": datetime.now().strftime("%Y%m%d%H%M%S%f"),
+            "url": url,
+            "name": name or url,
+            "enabled": True,
+            "added_at": datetime.now().isoformat(),
+        })
+        return True
+
+    return _mutate(apply)
 
 
 def remove_website(website_id: str) -> bool:
     """Remove a website by ID. Returns True if removed."""
-    data = _load_data()
-    original_count = len(data["websites"])
-    data["websites"] = [w for w in data["websites"] if w["id"] != website_id]
-    
-    if len(data["websites"]) < original_count:
-        _save_data(data)
-        return True
-    return False
+
+    def apply(data: dict) -> bool:
+        before = len(data["websites"])
+        data["websites"] = [w for w in data["websites"] if w["id"] != website_id]
+        return len(data["websites"]) < before
+
+    return _mutate(apply)
 
 
 def toggle_website(website_id: str) -> bool:
     """Toggle a website's enabled status. Returns new status."""
-    data = _load_data()
-    for website in data["websites"]:
-        if website["id"] == website_id:
-            website["enabled"] = not website["enabled"]
-            _save_data(data)
-            return website["enabled"]
-    return False
+
+    def apply(data: dict) -> bool:
+        for site in data["websites"]:
+            if site["id"] == website_id:
+                site["enabled"] = not site["enabled"]
+                return site["enabled"]
+        return False
+
+    return _mutate(apply)
 
 
 # Settings management functions
 def get_settings() -> dict:
-    """Get current settings."""
+    """Get current settings, filled in with defaults for keys an older store lacks."""
     data = _load_data()
-    return data.get("settings", DEFAULT_DATA["settings"].copy())
+    settings = DEFAULT_DATA["settings"].copy()
+    settings.update(data.get("settings", {}))
+    return settings
 
 
 def update_settings(interval_min: int = None, interval_max: int = None, 
-                   screenshots_enabled: bool = None):
+                   screenshots_enabled: bool = None, browser_engine: str = None,
+                   post_load_wait_seconds: int = None,
+                   browser_timezone: str = None):
     """Update settings. Only updates provided values."""
-    data = _load_data()
-    settings = data.get("settings", DEFAULT_DATA["settings"].copy())
-    
-    if interval_min is not None:
-        settings["interval_min"] = interval_min
-    if interval_max is not None:
-        settings["interval_max"] = interval_max
-    if screenshots_enabled is not None:
-        settings["screenshots_enabled"] = screenshots_enabled
-    
-    data["settings"] = settings
-    _save_data(data)
+    def apply(data: dict):
+        settings = DEFAULT_DATA["settings"].copy()
+        settings.update(data.get("settings", {}))
+
+        if interval_min is not None:
+            settings["interval_min"] = interval_min
+        if interval_max is not None:
+            settings["interval_max"] = interval_max
+        if screenshots_enabled is not None:
+            settings["screenshots_enabled"] = screenshots_enabled
+        if browser_engine is not None:
+            settings["browser_engine"] = browser_engine
+        if post_load_wait_seconds is not None:
+            settings["post_load_wait_seconds"] = post_load_wait_seconds
+        if browser_timezone is not None:
+            settings["browser_timezone"] = browser_timezone
+
+        data["settings"] = settings
+
+    _mutate(apply)
 
 
 # Visit history functions
@@ -195,29 +265,29 @@ def _cleanup_old_history(history: list) -> list:
 
 
 def add_visit_record(url: str, success: bool, response_time: float = 0, 
-                     error_message: str = "", screenshot_path: str = ""):
+                     error_message: str = "", screenshot_path: str = "",
+                     status_code: Optional[int] = None, final_url: str = "",
+                     title: str = "", blocked: bool = False):
     """Add a visit record to history and auto-cleanup old entries."""
-    data = _load_data()
-    
-    record = {
-        "url": url,
-        "timestamp": datetime.now().isoformat(),
-        "success": success,
-        "response_time_ms": round(response_time, 2),
-        "error_message": error_message
-    }
-    
-    # Get history and cleanup old entries
-    history = data.get("visit_history", [])
-    history = _cleanup_old_history(history)
-    
-    # Add new record at beginning
-    history.insert(0, record)
-    
-    # Also limit to max 100 entries as safety
-    data["visit_history"] = history[:100]
-    
-    _save_data(data)
+    def apply(data: dict):
+        record = {
+            "url": url,
+            "timestamp": datetime.now().isoformat(),
+            "success": success,
+            "response_time_ms": round(response_time, 2),
+            "error_message": error_message,
+            # Diagnostics: whether the origin (not just the CDN edge) answered.
+            "status_code": status_code,
+            "final_url": final_url or url,
+            "title": title,
+            "blocked": blocked,
+        }
+
+        history = _cleanup_old_history(data.get("visit_history", []))
+        history.insert(0, record)
+        data["visit_history"] = history[:100]
+
+    _mutate(apply)
 
 
 def get_visit_history(limit: int = 50) -> list:
@@ -229,7 +299,4 @@ def get_visit_history(limit: int = 50) -> list:
 
 def clear_visit_history():
     """Clear all visit history."""
-    data = _load_data()
-    data["visit_history"] = []
-    _save_data(data)
-
+    _mutate(lambda data: data.__setitem__("visit_history", []))

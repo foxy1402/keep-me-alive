@@ -1,57 +1,64 @@
-# Dockerfile for Render.com deployment
+# Keep Me Alive - container image for Portainer / any Docker host.
+#
+# Slim by design: no Streamlit (which drags in pandas/pyarrow), and only the
+# full Chromium build. It must be the full build, not the stripped headless
+# shell, so the browser does not advertise itself as headless.
 FROM python:3.11-slim
 
-# Install system dependencies for Playwright
-RUN apt-get update && apt-get install -y \
-    curl \
-    libnss3 \
-    libnspr4 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libxkbcommon0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libasound2 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libatspi2.0-0 \
-    libgtk-3-0 \
-    && rm -rf /var/lib/apt/lists/*
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PORT=8080 \
+    # Keep browsers out of /root so a non-root user can run them.
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
-# Set working directory
 WORKDIR /app
 
-# Copy requirements first for better caching
+# Python dependencies first, for layer caching. --no-compile skips .pyc files.
 COPY requirements.txt .
+RUN pip install --no-cache-dir --no-compile -r requirements.txt
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# The Playwright CLI is a Node binary that needs libatomic to run, and
+# `install-deps` (which would provide it) is itself a Playwright command.
+# Install that one library first so the CLI can start on a slim image.
+# gosu is used by the entrypoint to drop privileges after fixing data ownership.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends libatomic1 gosu \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install Playwright and Chromium browser
-RUN playwright install chromium
-RUN playwright install-deps chromium
+# System libraries for the browser, as root.
+ARG BROWSER_ENGINES=chromium
+RUN playwright install-deps ${BROWSER_ENGINES} \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy application code
-COPY . .
+# Create the runtime user before downloading the browser, and download it as
+# that user. Doing it after, with `chown -R /ms-playwright`, would copy every
+# Chromium file into a second layer (~440 MB) for no benefit.
+RUN useradd --create-home --uid 10001 appuser \
+    && mkdir -p /app/data /ms-playwright \
+    && chown appuser:appuser /app/data /ms-playwright
 
-# Create data directory
-RUN mkdir -p data
+# --no-shell skips the stripped "headless shell" build (~110 MB compressed).
+# This app never uses it: it always launches full Chromium via
+# channel="chromium", because the shell reports a HeadlessChrome user agent and
+# no plugins, which is exactly what we are trying to avoid.
+#
+# To also ship Firefox (for the engine toggle), build with:
+#   --build-arg BROWSER_ENGINES="chromium firefox"
+RUN gosu appuser playwright install --no-shell ${BROWSER_ENGINES}
 
-# Expose the default port (informational; overridden by $PORT at runtime)
-EXPOSE 8501
+COPY app.py browser_worker.py scheduler.py storage.py gist_storage.py ./
+COPY templates ./templates
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-# PORT defaults to 8501 but PaaS platforms (Render, Railway, Fly.io, etc.)
-# inject their own PORT at runtime, which this container binds to.
-ENV PORT=8501
-ENV STREAMLIT_SERVER_ADDRESS=0.0.0.0
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
-# Health check (shell form so ${PORT} is expanded)
-HEALTHCHECK CMD curl --fail "http://localhost:${PORT:-8501}/_stcore/health" || exit 1
+EXPOSE 8080
 
-# Run the application (shell form so ${PORT} is expanded from the environment)
-CMD streamlit run app.py --server.port=${PORT:-8501} --server.address=0.0.0.0
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s \
+    CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/healthz' % os.environ.get('PORT','8080'), timeout=3)" || exit 1
+
+# The entrypoint starts as root only to make a bind-mounted ./data writable,
+# then drops to appuser. Chromium here is unsandboxed (needs --no-sandbox in a
+# container), so it should not also be root.
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["sh", "-c", "exec uvicorn app:app --host 0.0.0.0 --port ${PORT:-8080} --timeout-graceful-shutdown 30"]

@@ -1,0 +1,14 @@
+.git
+.github
+__pycache__
+*.pyc
+*.pyo
+data
+.streamlit
+.venv
+venv
+.env
+*.log
+README.md
+render.yaml
+.gitignore

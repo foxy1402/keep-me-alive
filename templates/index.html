@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="top">
+  <div>
+    <h1 class="brand">Keep Me Alive</h1>
+    <p class="sub">Keep free-tier apps awake with periodic real-browser visits</p>
+  </div>
+  <div class="row-actions">
+    {% if has_password %}
+    <form class="inline" method="post" action="/logout"><button class="ghost">Log out</button></form>
+    {% endif %}
+  </div>
+</header>
+
+{% if not has_password %}
+<div class="flash warn">
+  <strong>No ADMIN_PASSWORD is set.</strong> Anyone who can reach this page can add, delete and
+  pause sites. Set it in your container environment.
+</div>
+{% endif %}
+
+{% if engine_warning %}
+<div class="flash warn">{{ engine_warning }}</div>
+{% endif %}
+
+{% if msg %}<div class="flash">{{ msg }}</div>{% endif %}
+
+<div class="metrics">
+  <div class="metric">
+    <div class="label">Total sites</div>
+    <div class="value">{{ total }}</div>
+  </div>
+  <div class="metric">
+    <div class="label">Active</div>
+    <div class="value">{{ active }}</div>
+  </div>
+  <div class="metric">
+    <div class="label">Success (24h)</div>
+    <div class="value">{{ rate }}</div>
+    <div class="note">{{ checks }} checks</div>
+  </div>
+  <div class="metric">
+    <div class="label">Next visit</div>
+    <div class="value">{{ next_run }}</div>
+    <div class="note">
+      {% if running %}<span class="pill pill-ok">scheduler running</span>{% else %}<span class="pill pill-bad">scheduler stopped</span>{% endif %}
+      {% if visiting %}<span class="pill pill-warn">visiting now</span>{% endif %}
+    </div>
+  </div>
+</div>
+
+{% if last_run.results %}
+<div class="card">
+  <h2>Last run{% if last_run.at %} · {{ last_run.at.strftime('%b %d, %H:%M') }}{% endif %}</h2>
+  {% for r in last_run.results %}
+  <div class="result">
+    <div>
+      {% if r.success %}<span class="pill pill-ok">ok</span>
+      {% elif r.blocked %}<span class="pill pill-warn">blocked</span>
+      {% else %}<span class="pill pill-bad">failed</span>{% endif %}
+      <strong>{{ r.name }}</strong>
+      <span class="num">{{ '%.0f'|format(r.response_time_ms) }} ms</span>
+    </div>
+    <div class="meta">
+      {% if r.status_code %}HTTP {{ r.status_code }}{% endif %}
+      {% if r.engine %} · {{ r.engine }}{% endif %}
+      {% if r.title %} · {{ r.title }}{% endif %}
+      {% if r.final_url and r.final_url != r.url %} · landed on {{ r.final_url }}{% endif %}
+    </div>
+    {% if r.error %}<div class="meta">{{ r.error }}</div>{% endif %}
+    {% if r.blocked %}
+    <div class="meta">A CDN/WAF answered instead of your app, so this visit likely did not wake it.</div>
+    {% endif %}
+    {% if r.screenshot_url %}<img src="{{ r.screenshot_url }}" alt="screenshot of {{ r.name }}">{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Add a site</h2>
+  <form method="post" action="/sites">
+    <div class="grid-3">
+      <div class="field">
+        <label for="url">URL</label>
+        <input id="url" name="url" type="text" placeholder="https://yourapp.onrender.com" required>
+      </div>
+      <div class="field">
+        <label for="name">Name (optional)</label>
+        <input id="name" name="name" type="text" placeholder="My App">
+      </div>
+      <div class="field"><button class="primary" type="submit">Add site</button></div>
+    </div>
+  </form>
+  <p class="hint">
+    Point this at the platform hostname (<code>yourapp.onrender.com</code>) rather than a custom
+    domain behind a CDN — the CDN can answer the request at its edge, which never wakes your app.
+  </p>
+</div>
+
+<div class="card">
+  <h2>Your sites ({{ active }}/{{ total }} active)</h2>
+  {% if not sites %}
+  <div class="empty">No sites yet. Add one above.</div>
+  {% else %}
+  <form class="inline" method="post" action="/visit-all">
+    <button class="primary" type="submit">Visit all now</button>
+  </form>
+  <p class="hint">Each visit takes a few seconds per site; the page reloads when the run finishes.</p>
+  <table>
+    <thead>
+      <tr><th>Site</th><th></th><th></th></tr>
+    </thead>
+    <tbody>
+    {% for site in sites %}
+      <tr>
+        <td>
+          <div class="site-name">
+            {{ site.name }}
+            {% if site.enabled %}<span class="pill pill-ok">active</span>{% else %}<span class="pill pill-mute">paused</span>{% endif %}
+          </div>
+          <div class="site-url">{{ site.url }}</div>
+        </td>
+        <td style="width:1%;white-space:nowrap">
+          <div class="row-actions">
+            <form class="inline" method="post" action="/sites/{{ site.id }}/visit"><button>Visit</button></form>
+            <form class="inline" method="post" action="/sites/{{ site.id }}/toggle"><button>{{ 'Pause' if site.enabled else 'Enable' }}</button></form>
+            <form class="inline" method="post" action="/sites/{{ site.id }}/delete"><button class="danger">Delete</button></form>
+          </div>
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Settings</h2>
+  <form method="post" action="/settings">
+    <div class="grid-2">
+      <div class="field">
+        <label for="interval_min">Interval min (minutes)</label>
+        <input id="interval_min" name="interval_min" type="number" min="1" max="60" value="{{ settings.interval_min }}">
+      </div>
+      <div class="field">
+        <label for="interval_max">Interval max (minutes)</label>
+        <input id="interval_max" name="interval_max" type="number" min="1" max="60" value="{{ settings.interval_max }}">
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="field">
+        <label for="browser_engine">Browser engine</label>
+        <select id="browser_engine" name="browser_engine">
+          {% if settings.browser_engine and settings.browser_engine not in engines %}
+          <option value="{{ settings.browser_engine }}" disabled selected>{{ settings.browser_engine }} (not installed)</option>
+          {% endif %}
+          {% for engine in engines %}
+          <option value="{{ engine }}" {% if engine == settings.browser_engine %}selected{% endif %}>{{ engine }}</option>
+          {% endfor %}
+        </select>
+        <div class="hint">Firefox must be installed in the image (BROWSER_ENGINES build arg).</div>
+      </div>
+      <div class="field">
+        <label for="browser_timezone">Browser timezone (IANA)</label>
+        <input id="browser_timezone" name="browser_timezone" type="text" value="{{ settings.browser_timezone }}">
+      </div>
+    </div>
+    <div class="field">
+      <label for="post_load_wait_seconds">Post-load wait (seconds)</label>
+      <input id="post_load_wait_seconds" name="post_load_wait_seconds" type="number" min="0" max="30" value="{{ settings.post_load_wait_seconds }}">
+      <div class="hint">Grace period after the page settles, so the app registers the hit.</div>
+    </div>
+    <div class="field">
+      <label class="check">
+        <input type="checkbox" name="screenshots_enabled" value="1" {% if settings.screenshots_enabled %}checked{% endif %}>
+        Capture screenshots on visits
+      </label>
+    </div>
+    <button class="primary" type="submit">Save settings</button>
+  </form>
+  <div class="row-actions" style="margin-top:14px">
+    {% if running %}
+    <form class="inline" method="post" action="/scheduler/stop"><button>Stop scheduler</button></form>
+    {% else %}
+    <form class="inline" method="post" action="/scheduler/start"><button>Start scheduler</button></form>
+    {% endif %}
+    {% if gist %}
+    <form class="inline" method="post" action="/sync"><button>Reload from Gist</button></form>
+    {% endif %}
+    <span class="pill {% if gist %}pill-ok{% else %}pill-warn{% endif %}">
+      {{ 'Gist storage active' if gist else 'Local storage only' }}
+    </span>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Visit history</h2>
+  {% if not history %}
+  <div class="empty">No history yet.</div>
+  {% else %}
+  <table>
+    <thead>
+      <tr><th>When</th><th>Site</th><th>Result</th><th>Detail</th></tr>
+    </thead>
+    <tbody>
+    {% for r in history %}
+      <tr>
+        <td class="num">{{ r.timestamp[:16]|replace('T', ' ') }}</td>
+        <td class="site-url">{{ r.url }}</td>
+        <td class="num">
+          {% if r.blocked %}<span class="pill pill-warn">blocked</span>
+          {% elif r.success %}<span class="pill pill-ok">ok</span>
+          {% else %}<span class="pill pill-bad">failed</span>{% endif %}
+        </td>
+        <td>
+          <div class="site-url">
+            {% if r.status_code %}HTTP {{ r.status_code }}{% endif %}
+            {% if r.status_code %} · {% endif %}{{ '%.0f'|format(r.response_time_ms) }} ms
+            {% if r.title %} · {{ r.title }}{% endif %}
+          </div>
+          {% if r.error_message %}<div class="site-url">{{ r.error_message }}</div>{% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <form method="post" action="/history/clear" style="margin-top:12px">
+    <button class="danger">Clear history</button>
+  </form>
+  {% endif %}
+</div>
+
+<footer class="note">
+  Visits use a real browser (Playwright) with a persistent profile per host, so a solved
+  edge challenge is reused. A visit only counts as successful when the origin answered —
+  an edge/CDN challenge is reported as blocked.
+</footer>
+{% endblock %}

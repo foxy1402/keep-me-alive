@@ -17,6 +17,9 @@ env/
 # Screenshots (optional, can be large)
 data/screenshots/
 
+# Browser profiles (per-host cookies / challenge clearance, machine-local)
+data/browser_profiles/
+
 # Runtime state (persisted via Gist; local file is ephemeral)
 data/websites.json
 

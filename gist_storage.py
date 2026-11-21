@@ -26,7 +26,10 @@ DEFAULT_DATA = {
     "settings": {
         "interval_min": 10,
         "interval_max": 14,
-        "screenshots_enabled": False
+        "screenshots_enabled": False,
+        "browser_engine": "chromium",
+        "post_load_wait_seconds": 5,
+        "browser_timezone": "UTC",
     },
     "visit_history": []
 }
@@ -45,10 +48,16 @@ def is_gist_configured() -> bool:
     return bool(GIST_TOKEN and GIST_ID)
 
 
-def load_from_gist() -> dict:
-    """Load data from GitHub Gist."""
+def load_from_gist() -> Optional[dict]:
+    """
+    Load data from GitHub Gist.
+
+    Returns None when the Gist cannot be read (unconfigured, network error,
+    non-200, bad JSON). Callers must treat None as "unavailable", not as "empty":
+    writing defaults back over an unread document destroys the user's data.
+    """
     if not is_gist_configured():
-        return DEFAULT_DATA.copy()
+        return None
     
     try:
         with _api_lock:
@@ -70,12 +79,15 @@ def load_from_gist() -> dict:
                         if key not in data:
                             data[key] = DEFAULT_DATA[key]
                     return data
-            
-            return DEFAULT_DATA.copy()
+                print(f"Gist {GIST_ID} has no {GIST_FILENAME} file")
+                return None
+
+            print(f"Could not load Gist: HTTP {response.status_code}")
+            return None
             
     except Exception as e:
         print(f"Error loading from Gist: {e}")
-        return DEFAULT_DATA.copy()
+        return None
 
 
 def save_to_gist(data: dict) -> bool:
